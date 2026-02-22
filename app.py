@@ -1,10 +1,10 @@
+import g4f
 import os
-import requests
 from flask import Flask, request, jsonify, render_template_string, send_from_directory
 
 app = Flask(__name__)
 
-# GitHub પર ફોલ્ડરનું નામ 'Videos' (V કેપિટલ) છે
+# વીડિયો પાથ સેટઅપ
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 VIDEO_FOLDER = os.path.join(BASE_DIR, 'Videos')
 
@@ -20,12 +20,12 @@ HTML_PAGE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>વિદુષી ૨.૦</title>
     <style>
-        body { font-family: sans-serif; background: #000; margin: 0; color: white; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+        body { font-family: sans-serif; background: #000; margin: 0; color: white; height: 100vh; overflow: hidden; }
         .video-wrapper { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
         #vidushi-video { width: 100%; height: 100%; object-fit: cover; }
-        .footer-bar { position: absolute; bottom: 0; width: 100%; padding: 20px; z-index: 10; background: linear-gradient(transparent, rgba(0,0,0,0.9)); text-align: center; box-sizing: border-box; }
-        #text-input { width: 75%; padding: 12px; border-radius: 25px; border: none; margin-bottom: 10px; color: #000; outline: none; }
-        #send-btn { background: #e67e22; border: none; padding: 10px 25px; border-radius: 20px; color: white; font-weight: bold; cursor: pointer; }
+        .footer-bar { position: absolute; bottom: 0; width: 100%; padding: 20px; z-index: 10; background: linear-gradient(transparent, rgba(0,0,0,0.9)); text-align: center; width: 100%; box-sizing: border-box; }
+        #text-input { width: 70%; padding: 12px; border-radius: 20px; border: none; margin-bottom: 10px; color: #000; }
+        #send-btn { background: #e67e22; border: none; padding: 10px 20px; border-radius: 20px; color: white; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -42,7 +42,7 @@ HTML_PAGE = """
     <script>
         const vPlayer = document.getElementById('vidushi-video');
         const vSource = document.getElementById('video-source');
-        vPlayer.play().catch(() => {});
+        vPlayer.play().catch(e => console.log("Autoplay blocked"));
 
         async function askAI() {
             const msg = document.getElementById('text-input').value;
@@ -60,12 +60,14 @@ HTML_PAGE = """
                 });
                 const data = await res.json();
                 
-                alert("વિદુષી: " + data.reply);
+                // વીડિયો બદલો અને જવાબ બતાવો
                 vSource.src = "/Videos/talking.mp4";
                 vPlayer.load();
                 vPlayer.play();
+                alert("વિદુષી: " + data.reply);
+                
             } catch (e) { 
-                alert("સર્વર અત્યારે વ્યસ્ત છે.");
+                alert("માફ કરજો, અત્યારે સર્વર જોડાણમાં સમસ્યા છે.");
                 vSource.src = "/Videos/silent.mp4";
                 vPlayer.load();
                 vPlayer.play();
@@ -85,13 +87,16 @@ def chat_api():
         data = request.json
         user_msg = data.get('message', '')
         
-        # પ્રોફેશનલ એપ માટે અત્યારે એક સ્ટેટિક જવાબ મોકલીએ છીએ 
-        # કારણ કે Render પર ફ્રી AI લાઈબ્રેરીઓ વારંવાર બ્લોક થાય છે
-        reply = f"મેં તમારો પ્રશ્ન '{user_msg}' સાંભળ્યો. હું અત્યારે અપડેટ થઈ રહી છું, ટૂંક સમયમાં તમને વિગતવાર જવાબ આપીશ."
-        
-        return jsonify({'reply': reply})
+        # 'Blackbox' પ્રોવાઈડર ઘણીવાર કી વગર અને સર્વર પર સારું ચાલે છે
+        response = g4f.ChatCompletion.create(
+            model=g4f.models.default,
+            provider=g4f.Provider.Blackbox,
+            messages=[{"role": "user", "content": "જવાબ ટૂંકમાં ગુજરાતીમાં આપો: " + user_msg}],
+        )
+        return jsonify({'reply': response})
     except Exception:
-        return jsonify({'reply': "ક્ષમા કરજો, અત્યારે સર્વર લોડ લઈ રહ્યું છે."})
+        # જો AI પ્રોવાઈડર ફેઈલ જાય, તો આ મેસેજ મોકલો
+        return jsonify({'reply': "હું હજી શીખી રહી છું, થોડી વાર પછી ફરી પૂછશો?"})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
