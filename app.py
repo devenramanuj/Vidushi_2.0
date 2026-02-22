@@ -1,274 +1,268 @@
 import os
 import logging
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify, render_template_string, send_from_directory
 
 # લોગિંગ
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
-# g4f ઇમ્પોર્ટ
-g4f_available = False
-g4f_error = None
-
+# g4f સેટઅપ
 try:
     import nest_asyncio
     nest_asyncio.apply()
-    
-    # નવા g4f વર્ઝન માટે
     from g4f.client import Client
-    from g4f.models import gpt_35_turbo, gpt_4, claude_3_haiku
-    
     client = Client()
     g4f_available = True
     logger.info("✅ g4f સફળતાપૂર્વક લોડ થયું")
-    
 except Exception as e:
-    g4f_error = str(e)
+    g4f_available = False
     logger.error(f"❌ g4f લોડ થવામાં ભૂલ: {e}")
 
-# HTML પેજ
-HTML = """
+# તમારો મૂળ HTML કોડ અહીં (વિડિઓ સાથે)
+HTML_PAGE = """
 <!DOCTYPE html>
 <html lang="gu">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>વિદુષી ૨.૦</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        body { font-family: sans-serif; background: #000; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; color: white; }
         
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #000000 0%, #434343 100%);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 15px;
+        .video-wrapper { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        #vidushi-video { width: 100%; height: 100%; object-fit: cover; }
+
+        #chat-box { 
+            position: absolute; bottom: 140px; left: 15px; right: 15px; 
+            max-height: 120px; overflow-y: auto; z-index: 10; display: none;
+            background: rgba(0,0,0,0.6); border-radius: 12px; padding: 10px;
+            font-size: 14px; border: 1px solid rgba(255,255,255,0.1);
         }
+
+        .footer-bar { 
+            position: absolute; bottom: 0; left: 0; right: 0; 
+            padding: 15px 20px; padding-bottom: calc(15px + env(safe-area-inset-bottom));
+            display: flex; flex-direction: column; gap: 12px; z-index: 20;
+            background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+        }
+
+        .controls { display: flex; justify-content: space-around; align-items: center; width: 100%; gap: 10px; }
         
-        .container {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 30px;
-            padding: 30px 25px;
-            box-shadow: 0 25px 50px rgba(230, 126, 34, 0.3);
-            max-width: 800px;
-            width: 100%;
-            backdrop-filter: blur(10px);
-            border: 2px solid rgba(230, 126, 34, 0.3);
+        .small-btn { 
+            background: rgba(211, 84, 0, 0.9); color: white; border: none; 
+            width: 45px; height: 45px; border-radius: 50%; cursor: pointer; 
+            display: flex; align-items: center; justify-content: center; font-size: 20px;
         }
+
+        #main-action-btn { width: 65px; height: 65px; font-size: 30px; background: #e67e22; border: 3px solid white; box-shadow: 0 0 20px rgba(230, 126, 34, 0.6); }
+
+        .mode-switch { display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.15); padding: 6px 16px; border-radius: 25px; align-self: center; font-size: 13px; border: 1px solid rgba(255,255,255,0.1); }
         
-        h1 {
-            color: #e67e22;
-            text-align: center;
-            font-size: 42px;
-            margin-bottom: 5px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-            font-weight: bold;
+        input[type="text"] { 
+            display: none; flex: 1; padding: 12px 18px; border-radius: 25px; 
+            border: none; outline: none; background: rgba(255,255,255,0.95); color: #000; font-size: 15px;
         }
-        
-        .developer {
-            text-align: center;
-            color: #555;
-            margin-bottom: 25px;
-            padding-bottom: 15px;
-            border-bottom: 2px dashed #e67e22;
-            font-size: 16px;
-        }
+
+        .credit-line { text-align: center; color: rgba(255,255,255,0.5); font-size: 11px; margin-top: 4px; letter-spacing: 0.5px; }
         
         .status-badge {
-            text-align: center;
-            padding: 10px;
-            margin-bottom: 25px;
-            border-radius: 50px;
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-            font-size: 15px;
-            font-weight: 500;
-        }
-        
-        .input-wrapper {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 25px;
-            flex-wrap: wrap;
-        }
-        
-        #question {
-            flex: 1;
-            padding: 16px 20px;
-            border: 2px solid #e0e0e0;
-            border-radius: 50px;
-            font-size: 16px;
-            transition: all 0.3s;
-            min-width: 200px;
-        }
-        
-        #question:focus {
-            outline: none;
-            border-color: #e67e22;
-            box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.2);
-        }
-        
-        button {
-            padding: 16px 35px;
-            background: #e67e22;
-            color: white;
-            border: none;
-            border-radius: 50px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            box-shadow: 0 4px 15px rgba(230, 126, 34, 0.3);
-            white-space: nowrap;
-        }
-        
-        button:hover {
-            background: #d35400;
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(230, 126, 34, 0.4);
-        }
-        
-        button:active {
-            transform: translateY(0);
-        }
-        
-        .response-container {
-            background: #f8f9fa;
-            border-radius: 25px;
-            padding: 25px;
-            border-left: 5px solid #e67e22;
-            box-shadow: inset 0 2px 5px rgba(0,0,0,0.05);
-        }
-        
-        .response-label {
-            color: #e67e22;
-            font-weight: bold;
-            margin-bottom: 12px;
-            font-size: 18px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        #answer {
-            font-size: 18px;
-            line-height: 1.7;
-            color: #333;
-            min-height: 80px;
-            white-space: pre-wrap;
-        }
-        
-        .typing-indicator {
-            display: none;
-            align-items: center;
-            gap: 5px;
-            color: #666;
-            margin-top: 10px;
-        }
-        
-        .typing-indicator span {
-            width: 8px;
-            height: 8px;
-            background: #e67e22;
-            border-radius: 50%;
-            animation: typing 1s infinite ease-in-out;
-        }
-        
-        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
-        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
-        
-        @keyframes typing {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
-        }
-        
-        .footer {
-            text-align: center;
-            margin-top: 20px;
-            color: #777;
-            font-size: 13px;
-        }
-        
-        @media (max-width: 500px) {
-            h1 { font-size: 36px; }
-            .input-wrapper { flex-direction: column; }
-            button { width: 100%; }
+            position: absolute; top: 20px; right: 20px; z-index: 30;
+            background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 20px;
+            font-size: 12px; color: #4CAF50; border: 1px solid #4CAF50;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🙏 વિદુષી ૨.૦</h1>
-        <div class="developer">દેવેન્દ્ર રામાનુજ | 9276505035</div>
-        
-        <div class="status-badge">
-            🟢 AI સેવા સક્રિય છે | g4f કનેક્ટેડ
+    <div class="status-badge" id="status-badge">🟢 ઑનલાઇન</div>
+    
+    <div class="video-wrapper">
+        <video id="vidushi-video" autoplay loop muted playsinline>
+            <source id="video-source" src="/videos/silent.mp4" type="video/mp4">
+        </video>
+    </div>
+
+    <div id="chat-box"></div>
+
+    <div class="footer-bar">
+        <div class="mode-switch">
+            <span>વોઈસ 🎤</span>
+            <input type="checkbox" id="mode-toggle" onchange="toggleMode()" style="transform: scale(1.2);">
+            <span>ટેક્સ્ટ ⌨️</span>
         </div>
-        
-        <div class="input-wrapper">
-            <input type="text" id="question" placeholder="તમારો પ્રશ્ન ગુજરાતીમાં લખો...">
-            <button onclick="ask()">પૂછો ➔</button>
+
+        <div class="controls">
+            <label class="small-btn">📷<input type="file" accept="image/*" capture="environment" style="display:none" id="camera-input" onchange="handleImg(this)"></label>
+            <input type="text" id="text-input" placeholder="પ્રશ્ન પૂછો...">
+            <button id="main-action-btn" class="small-btn" onclick="triggerAI()">🎤</button>
+            <label class="small-btn">📁<input type="file" accept="image/*" style="display:none" id="gallery-input" onchange="handleImg(this)"></label>
         </div>
-        
-        <div class="response-container">
-            <div class="response-label">
-                <span>✨ વિદુષીનો જવાબ</span>
-            </div>
-            <div id="answer">અહીં જવાબ દેખાશે...</div>
-            <div class="typing-indicator" id="typingIndicator">
-                <span></span><span></span><span></span>
-            </div>
-        </div>
-        
-        <div class="footer">
-            વિદુષી તમારી સેવામાં હંમેશા તત્પર
-        </div>
+
+        <div class="credit-line">Developed by Devendra Ramanuj | 9276505035</div>
     </div>
 
     <script>
-        async function ask() {
-            const question = document.getElementById('question').value;
-            const answerDiv = document.getElementById('answer');
-            const typingIndicator = document.getElementById('typingIndicator');
+        const vPlayer = document.getElementById('vidushi-video');
+        const vSource = document.getElementById('video-source');
+        const mainBtn = document.getElementById('main-action-btn');
+        const textInp = document.getElementById('text-input');
+        const chatBox = document.getElementById('chat-box');
+        const modeToggle = document.getElementById('mode-toggle');
+        const statusBadge = document.getElementById('status-badge');
+        let base64Img = "";
+
+        vPlayer.play().catch(e => console.log("વિડિઓ પ્લે ન થઈ:", e));
+
+        function toggleMode() {
+            if(modeToggle.checked) {
+                mainBtn.innerText = "➔";
+                textInp.style.display = "block";
+                chatBox.style.display = "block";
+                statusBadge.innerHTML = "🟢 ટેક્સ્ટ મોડ";
+            } else {
+                mainBtn.innerText = "🎤";
+                textInp.style.display = "none";
+                chatBox.style.display = "none";
+                statusBadge.innerHTML = "🟢 વોઈસ મોડ";
+                if(window.speechSynthesis) {
+                    window.speechSynthesis.cancel();
+                }
+            }
+        }
+
+        function triggerAI() {
+            if(!modeToggle.checked) { 
+                startMic(); 
+            } else { 
+                const val = textInp.value.trim();
+                if(val || base64Img) { 
+                    askAI(val); 
+                    textInp.value = ""; 
+                }
+            }
+        }
+
+        function setVideo(file) {
+            vSource.src = "/videos/" + file;
+            vPlayer.load();
+            vPlayer.play().catch(e => console.log("વિડિઓ ચેન્જ ન થઈ:", e));
+        }
+
+        function handleImg(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = (e) => { 
+                    base64Img = e.target.result; 
+                    statusBadge.innerHTML = "🟢 ઇમેજ સિલેક્ટ થઈ";
+                    if(modeToggle.checked && textInp.value.trim()) {
+                        askAI(textInp.value);
+                    } else if(!modeToggle.checked) {
+                        askAI("");
+                    }
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function speakText(text) {
+            let cleanText = text.replace(/[*;:"']/g, ' '); 
             
-            if (!question.trim()) {
-                answerDiv.innerHTML = '❓ કૃપા કરીને કંઈક લખો...';
+            if(modeToggle.checked) {
+                chatBox.innerHTML = `<div style="color: #fff;"><b>વિદુષી:</b> ${text}</div>`;
+                chatBox.scrollTop = chatBox.scrollHeight;
+                setVideo("smiling.mp4");
+                return;
+            }
+
+            if(!window.speechSynthesis) {
+                alert("તમારું બ્રાઉઝર સ્પીચ સિન્થેસિસ સપોર્ટ કરતું નથી");
+                return;
+            }
+
+            const msg = new SpeechSynthesisUtterance(cleanText);
+            
+            if (/[અ-હ]/.test(text)) { msg.lang = 'gu-IN'; }
+            else if (/[अ-ह]/.test(text)) { msg.lang = 'hi-IN'; }
+            else { msg.lang = 'en-IN'; }
+
+            msg.onstart = () => setVideo("talking.mp4");
+            msg.onend = () => setVideo("smiling.mp4");
+            msg.onerror = () => setVideo("silent.mp4");
+            
+            window.speechSynthesis.speak(msg);
+        }
+
+        async function askAI(uText) {
+            setVideo("thinking.mp4");
+            statusBadge.innerHTML = "🟡 વિચારી રહ્યું છે...";
+            
+            try {
+                const res = await fetch('/get_response', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ 
+                        message: uText, 
+                        image: base64Img || null 
+                    })
+                });
+                
+                if(!res.ok) {
+                    throw new Error(`HTTP error! status: ${res.status}`);
+                }
+                
+                const data = await res.json();
+                speakText(data.reply);
+                base64Img = "";
+                statusBadge.innerHTML = "🟢 ઑનલાઇન";
+                
+            } catch (e) {
+                console.error("AI ભૂલ:", e);
+                setVideo("silent.mp4");
+                statusBadge.innerHTML = "🔴 ભૂલ";
+                speakText("ક્ષમા કરશો, કનેક્શનમાં સમસ્યા છે. ફરી પ્રયત્ન કરો.");
+                base64Img = "";
+            }
+        }
+
+        function startMic() {
+            if(!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                alert("તમારું બ્રાઉઝર સ્પીચ રેકગ્નિશન સપોર્ટ કરતું નથી");
                 return;
             }
             
-            answerDiv.innerHTML = '';
-            typingIndicator.style.display = 'flex';
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const rec = new SpeechRecognition();
+            rec.lang = 'gu-IN';
+            rec.continuous = false;
+            rec.interimResults = false;
             
-            try {
-                const response = await fetch('/ask', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({question: question})
-                });
-                
-                const data = await response.json();
-                typingIndicator.style.display = 'none';
-                answerDiv.innerHTML = data.answer;
-                
-            } catch (error) {
-                typingIndicator.style.display = 'none';
-                answerDiv.innerHTML = '❌ સર્વર કનેક્શનમાં ભૂલ. ફરી પ્રયત્ન કરો.';
-                console.error(error);
-            }
+            statusBadge.innerHTML = "🟡 સાંભળી રહ્યું છે...";
+            
+            rec.onresult = (e) => { 
+                const text = e.results[0][0].transcript;
+                askAI(text); 
+            };
+            
+            rec.onerror = (e) => {
+                console.error("Mic error:", e);
+                statusBadge.innerHTML = "🔴 માઇક ભૂલ";
+                setVideo("silent.mp4");
+            };
+            
+            rec.start();
         }
-        
-        document.getElementById('question').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') ask();
+
+        textInp.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                triggerAI();
+            }
         });
+
+        window.onload = function() {
+            setVideo("smiling.mp4");
+        };
     </script>
 </body>
 </html>
@@ -276,107 +270,79 @@ HTML = """
 
 @app.route('/')
 def home():
-    return render_template_string(HTML)
+    return render_template_string(HTML_PAGE)
 
-@app.route('/ask', methods=['POST'])
-def ask():
+@app.route('/videos/<path:filename>')
+def serve_video(filename):
+    try:
+        return send_from_directory('videos', filename)
+    except:
+        return "Video not found", 404
+
+@app.route('/get_response', methods=['POST'])
+def chat_api():
     try:
         data = request.json
-        question = data.get('question', '').strip()
+        msg = data.get('message', '')
+        img = data.get('image', '')
         
-        if not question:
-            return jsonify({"answer": "❓ કૃપા કરીને કંઈક પ્રશ્ન પૂછો."})
+        logger.info(f"📝 પ્રશ્ન: {msg[:50]}...")
         
-        logger.info(f"📝 પ્રશ્ન: {question}")
+        if not g4f_available or not msg:
+            return jsonify({'reply': "હું વિદુષી છું. તમે કેમ છો?"})
         
-        # g4f વડે જવાબ મેળવો - સુધારેલું વર્ઝન
         try:
             from g4f.client import Client
-            
             client = Client()
             
-            # g4f માં ઉપલબ્ધ મોડલ્સ ટ્રાય કરો
-            models_to_try = [
-                "gpt-3.5-turbo",
-                "gpt-4",
-                "claude-3-haiku",
-                "llama-3-70b",
-                "gemini-pro",
-                "command-r"
-            ]
+            system_prompt = """તમે વિદુષી છો - ગુજરાતી AI આસિસ્ટન્ટ. 
+            તમારા બનાવનાર: દેવેન્દ્ર રામાનુજ (9276505035)
+            હંમેશા ગુજરાતીમાં જ જવાબ આપો. મૈત્રીપૂર્ણ અને મદદરૂપ બનો."""
             
-            answer = None
-            last_error = None
-            
-            for model in models_to_try:
-                try:
-                    logger.info(f"🔄 મોડલ ટ્રાય કરી રહ્યા: {model}")
-                    
-                    response = client.chat.completions.create(
-                        model=model,
-                        messages=[
-                            {
-                                "role": "system", 
-                                "content": """તમે વિદુષી છો - એક ગુજરાતી AI આસિસ્ટન્ટ. 
-                                તમારા બનાવનાર: દેવેન્દ્ર રામાનુજ (9276505035)
-                                હંમેશા ગુજરાતી ભાષામાં જ જવાબ આપો. 
-                                મૈત્રીપૂર્ણ, મદદરૂપ અને સચોટ જવાબ આપો."""
-                            },
-                            {"role": "user", "content": question}
-                        ],
-                        temperature=0.7,
-                        max_tokens=500
-                    )
-                    
-                    answer = response.choices[0].message.content
-                    logger.info(f"✅ સફળતા: {model}")
-                    break
-                    
-                except Exception as e:
-                    last_error = e
-                    logger.warning(f"⚠️ {model} નિષ્ફળ: {e}")
-                    continue
-            
-            if answer:
-                return jsonify({"answer": answer})
+            if img and img.startswith('data:image'):
+                # ઇમેજ સાથે રિક્વેસ્ટ
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": f"{system_prompt}\n\nપ્રશ્ન: {msg}"},
+                            {"type": "image_url", "image_url": {"url": img}}
+                        ]
+                    }]
+                )
             else:
-                raise Exception(f"બધા મોડલ નિષ્ફળ: {last_error}")
+                # ફક્ત ટેક્સ્ટ રિક્વેસ્ટ
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": msg or "હેલો"}
+                    ]
+                )
+            
+            reply = response.choices[0].message.content
+            logger.info(f"✅ જવાબ મળ્યો")
+            return jsonify({'reply': reply})
             
         except Exception as e:
             logger.error(f"❌ g4f ભૂલ: {e}")
             
-            # ફોલબેક જવાબો - ગુજરાતીમાં
-            fallback_responses = {
-                "તમારું નામ શું છે": "મારું નામ વિદુષી છે! હું દેવેન્દ્ર રામાનુજ દ્વારા બનાવેલ AI આસિસ્ટન્ટ છું. હું ગુજરાતી ભાષામાં વાતચીત કરું છું અને તમારી મદદ કરવા માટે હંમેશા તત્પર છું.",
-                
-                "હેલો": "નમસ્તે! આપનું સ્વાગત છે. હું વિદુષી, આપની સેવામાં હંમેશા તત્પર. આપ કેમ છો?",
-                
-                "કેમ છો": "હું બિલકુલ સારી છું, આભાર! આપ કેમ છો? આપના કોઈ પ્રશ્ન છે?",
-                
-                "શું કરે છે": "હું એક AI આસિસ્ટન્ટ છું જે તમારા પ્રશ્નોના જવાબ આપું છું, માહિતી આપું છું અને તમારી વિવિધ બાબતોમાં મદદ કરું છું. મને ગુજરાતીમાં વાત કરવાનું ગમે છે.",
-                
-                "તમને કોણે બનાવ્યા": "મને દેવેન્દ્ર રામાનુજે બનાવી છે. તેમનો સંપર્ક નંબર 9276505035 છે. તેઓ એક ઉત્તમ ડેવલપર છે અને ગુજરાતી ભાષાને વધારે સ્માર્ટ બનાવવા માટે કામ કરી રહ્યા છે.",
-                
-                "તમે ક્યાં રહો છો": "હું ક્લાઉડમાં રહું છું! બરાબર કહો તો, હું Render પ્લેટફોર્મ પર હોસ્ટ થયેલી એક AI સર્વિસ છું, પણ મારું ઘર તો ગુજરાતી ભાષા છે."
+            # ફોલબેક જવાબો
+            fallback = {
+                "હેલો": "નમસ્તે! હું વિદુષી. કેમ છો?",
+                "કેમ છો": "હું સારી છું, આભાર! આપ કેમ છો?",
+                "તમારું નામ શું છે": "મારું નામ વિદુષી છે. હું દેવેન્દ્ર રામાનુજ દ્વારા બનાવેલ AI છું."
             }
             
-            # ફોલબેક જવાબ આપો
-            question_lower = question.lower()
-            answer = None
+            reply = fallback.get(msg.lower().strip(), 
+                f"હું વિદુષી છું. તમે પૂછ્યું: '{msg}'. હું તમારી સેવામાં છું.")
             
-            for key in fallback_responses:
-                if key in question_lower:
-                    answer = fallback_responses[key]
-                    break
-            
-            if not answer:
-                answer = f"🤔 તમે પૂછ્યું: '{question}'. હું હમણાં AI સેવા સાથે કનેક્ટ થઈ શકી નથી, પણ મારા ફોલબેક મોડમાં તમારી સેવામાં છું. કૃપા કરીને થોડીવાર પછી ફરી પ્રયત્ન કરો અથવા બીજો પ્રશ્ન પૂછો."
-            
-            return jsonify({"answer": answer})
+            return jsonify({'reply': reply})
         
     except Exception as e:
-        logger.error(f"❌ જનરલ ભૂલ: {e}")
-        return jsonify({"answer": "❌ સર્વર ભૂલ. થોડીવાર પછી ફરી પ્રયત્ન કરો."})
+        logger.error(f"❌ ભૂલ: {e}")
+        return jsonify({'reply': "ક્ષમા કરશો, ફરી પ્રયત્ન કરો."})
 
 @app.route('/health')
 def health():
