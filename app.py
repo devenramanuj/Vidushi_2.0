@@ -1,135 +1,255 @@
 import os
-import requests
+import json
+import random
+import numpy as np
 from flask import Flask, request, jsonify, render_template_string, send_from_directory
 
 app = Flask(__name__)
 
-# વીડિયો ફોલ્ડર પાથ - તમારા 'Videos' ફોલ્ડર મુજબ
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 VIDEO_FOLDER = os.path.join(BASE_DIR, 'Videos')
+os.makedirs(VIDEO_FOLDER, exist_ok=True)
 
-@app.route('/Videos/<path:filename>')
-def serve_video(filename):
-    return send_from_directory(VIDEO_FOLDER, filename)
-
-HTML_PAGE = """
-<!DOCTYPE html>
-<html lang="gu">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>વિદુષી ૨.૦</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #000; margin: 0; overflow: hidden; height: 100vh; color: white; }
-        .video-wrapper { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
-        #vidushi-video { width: 100%; height: 100%; object-fit: cover; }
-        
-        #response-box { 
-            position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%); 
-            width: 85%; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 15px; 
-            border-left: 5px solid #e67e22; z-index: 10; display: none; max-height: 150px; overflow-y: auto;
-        }
-
-        .footer-bar { 
-            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); 
-            width: 90%; z-index: 20; display: flex; align-items: center; 
-            background: rgba(255,255,255,0.1); padding: 10px; border-radius: 30px; backdrop-filter: blur(10px);
-        }
-        
-        #text-input { flex: 1; background: transparent; border: none; color: white; padding: 10px; outline: none; font-size: 16px; }
-        .btn { background: none; border: none; color: white; cursor: pointer; font-size: 24px; padding: 0 10px; }
-        
-        #status { position: fixed; top: 20px; left: 20px; font-size: 12px; color: #4CAF50; z-index: 30; }
-    </style>
-</head>
-<body>
-    <div id="status">🟢 વિદુષી ઑનલાઇન</div>
-    <div class="video-wrapper">
-        <video id="vidushi-video" loop muted playsinline>
-            <source id="video-source" src="/Videos/silent.mp4" type="video/mp4">
-        </video>
-    </div>
-
-    <div id="response-box"></div>
-
-    <div class="footer-bar">
-        <button class="btn" onclick="startMic()">🎤</button>
-        <input type="text" id="text-input" placeholder="વિદુષીને પૂછો...">
-        <button class="btn" onclick="askAI()">🚀</button>
-    </div>
-
-    <script>
-        const vPlayer = document.getElementById('vidushi-video');
-        const vSource = document.getElementById('video-source');
-        const resBox = document.getElementById('response-box');
-        vPlayer.play().catch(() => {});
-
-        function speak(text) {
-            if ('speechSynthesis' in window) {
-                window.speechSynthesis.cancel();
-                const msg = new SpeechSynthesisUtterance(text);
-                msg.lang = 'gu-IN';
-                msg.onstart = () => { vSource.src = "/Videos/talking.mp4"; vPlayer.load(); vPlayer.play(); };
-                msg.onend = () => { vSource.src = "/Videos/silent.mp4"; vPlayer.load(); vPlayer.play(); };
-                window.speechSynthesis.speak(msg);
-            }
-        }
-
-        function startMic() {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SpeechRecognition) return alert("માઇક સપોર્ટ નથી.");
-            const rec = new SpeechRecognition();
-            rec.lang = 'gu-IN';
-            rec.onresult = (e) => { document.getElementById('text-input').value = e.results[0][0].transcript; askAI(); };
-            rec.start();
-        }
-
-        async function askAI() {
-            const q = document.getElementById('text-input').value;
-            if(!q) return;
+class NaturalGujaratiBot:
+    def __init__(self):
+        # વિસ્તૃત નોલેજ બેઝ - પ્રશ્ન અને જવાબની જોડીઓ
+        self.qa_corpus = [
+            # વ્યક્તિગત પ્રશ્નો
+            {
+                "question": "તમારું નામ શું છે?",
+                "keywords": ["નામ", "તમારું", "કોને કહેવાય"],
+                "answer": "મારું નામ વિદુષી છે. સંસ્કૃતમાં 'વિદુષી' એટલે જ્ઞાની સ્ત્રી. મારા નિર્માતાઓએ મને આ નામ આપ્યું છે."
+            },
+            {
+                "question": "તમે કોણ છો?",
+                "keywords": ["કોણ", "ઓળખ", "છો તમે"],
+                "answer": "હું વિદુષી છું - એક ગુજરાતી AI સહાયક. મારો જન્મ ગુજરાતના ડિજિટલ વિશ્વમાં થયો છે. હું લોકોને ગુજરાતી ભાષામાં મદદ કરવા માટે અહીં છું."
+            },
             
-            resBox.style.display = "block";
-            resBox.innerText = "વિચારી રહી છું...";
-            vSource.src = "/Videos/thinking.mp4"; vPlayer.load(); vPlayer.play();
-
-            try {
-                const res = await fetch('/get_response', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ message: q })
-                });
-                const data = await res.json();
-                resBox.innerText = data.reply;
-                speak(data.reply);
-            } catch (e) {
-                resBox.innerText = "ભૂલ આવી છે.";
-                vSource.src = "/Videos/silent.mp4"; vPlayer.load(); vPlayer.play();
+            # સ્વાસ્થ્ય પ્રશ્નો
+            {
+                "question": "મારું માથું દુખે છે, શું કરું?",
+                "keywords": ["માથું", "દુખે", "સર દર્દ", "માથાનો દુખાવો"],
+                "answer": "માથાનો દુખાવો થાય ત્યારે આરામ કરવો જરૂરી છે. પર્યાપ્ત પાણી પીવો, અંધારા ઓરડામાં આરામ કરો, અને કોફી-ચા ઓછી કરો. જો દુખાવો વધે તો ડૉક્ટરને બતાવો."
+            },
+            {
+                "question": "વજન કેમ ઘટાડવું?",
+                "keywords": ["વજન", "ઘટાડવું", "મોટાપો", "સ્લિમ"],
+                "answer": "વજન ઘટાડવા માટે સંતુલિત આહાર અને નિયમિત કસરત જરૂરી છે. દરરોજ ૩૦ મિનિટ ચાલો, ફાસ્ટફૂડ ટાળો, અને પુષ્કળ પાણી પીવો. યાદ રાખો, ધીમું અને સતત વજન ઘટાડવું વધુ અસરકારક છે."
+            },
+            
+            # શિક્ષણ
+            {
+                "question": "ગુજરાતી કેવી રીતે શીખવું?",
+                "keywords": ["ગુજરાતી", "શીખવું", "લેંગ્વેજ", "ભાષા"],
+                "answer": "ગુજરાતી શીખવા માટે રોજ ગુજરાતી વાંચો, ગુજરાતી ચેનલો જુઓ, અને ગુજરાતી બોલતા લોકો સાથે વાત કરો. યુટ્યુબ પર ઘણા સારા કોર્સ છે. શરૂઆતમાં સરળ શબ્દોથી શરૂ કરો."
+            },
+            {
+                "question": "પરીક્ષામાં સારા માર્ક્સ કેવી રીતે લાવવા?",
+                "keywords": ["પરીક્ષા", "માર્ક્સ", "અભ્યાસ", "પડવું"],
+                "answer": "પરીક્ષામાં સારા માર્ક્સ માટે નિયમિત અભ્યાસ જરૂરી છે. રોજ થોડો સમય વાંચો, નોંધ બનાવો, અને જૂના પ્રશ્નપત્રો ઉકેલો. પૂરતી ઊંઘ લો અને આત્મવિશ્વાસ રાખો. તમે ચોક્કસ સફળ થશો!"
+            },
+            
+            # સંબંધો
+            {
+                "question": "મારા મિત્ર સાથે ઝઘડો થયો, શું કરું?",
+                "keywords": ["ઝઘડો", "મિત્ર", "લડાઈ", "ગુસ્સો"],
+                "answer": "મિત્ર સાથે ઝઘડો થાય ત્યારે શાંત રહેવું મહત્વનું છે. બંનેને થોડો સમય આપો, પછી વાત કરો. તમારી લાગણીઓ શાંતિથી સમજાવો અને તેની વાત પણ સાંભળો. નાની નાની વાતો પર મિત્રતા બગાડવી નહીં."
+            },
+            {
+                "question": "પ્રેમમાં કેવી રીતે પ્રપોઝ કરવું?",
+                "keywords": ["પ્રેમ", "પ્રપોઝ", "લવ", "બોયફ્રેન્ડ", "ગર્લફ્રેન્ડ"],
+                "answer": "પ્રેમમાં પ્રપોઝ કરવું એ વ્યક્તિગત અનુભવ છે. જ્યારે બંને તૈયાર હોય અને સાચો સમય હોય ત્યારે કરો. સીધા અને નિખાલસ બનો, તમારી લાગણીઓ શબ્દોમાં વ્યક્ત કરો. યાદ રાખો, ના પડે તો પણ મિત્રતા જાળવી રાખો."
+            },
+            
+            # કારકિર્દી
+            {
+                "question": "કયો વ્યવસાય શરૂ કરું?",
+                "keywords": ["વ્યવસાય", "બિઝનેસ", "ધંધો", "સ્ટાર્ટઅપ"],
+                "answer": "વ્યવસાય પસંદ કરતી વખતે તમારી રુચિ, કુશળતા અને બજારની માંગ ધ્યાનમાં લો. નાનું શરૂ કરો, સંશોધન કરો, અને નિષ્ફળતાથી શીખો. ગુજરાતમાં હાલ ટેક્નોલોજી, હેન્ડીક્રાફ્ટ અને ફૂડ બિઝનેસ સારો ચાલે છે."
+            },
+            {
+                "question": "નોકરી કેવી રીતે મેળવવી?",
+                "keywords": ["નોકરી", "જોબ", "પ્લેસમેન્ટ", "ઇન્ટરવ્યુ"],
+                "answer": "નોકરી મેળવવા માટે સૌપ્રથમ તમારું રેઝ્યૂમે સારું બનાવો. લિંક્ડઇન પર પ્રોફાઇલ બનાવો, નેટવર્કિંગ કરો, અને ઇન્ટરવ્યુની તૈયારી કરો. નાની નોકરીથી શરૂ કરો અને અનુભવ મેળવો."
+            },
+            
+            # ટેક્નોલોજી
+            {
+                "question": "કોમ્પ્યુટર શીખવું છે, ક્યાંથી શરૂ કરું?",
+                "keywords": ["કોમ્પ્યુટર", "કમ્પ્યુટર", "શીખવું", "કોર્સ"],
+                "answer": "કોમ્પ્યુટર શીખવાની શરૂઆત માઉસ-કીબોર્ડથી કરો. પછી માઇક્રોસોફ્ટ ઓફિસ (વર્ડ, એક્સેલ) શીખો. યુટ્યુબ પર ઘણા ગુજરાતી ટ્યુટોરિયલ્સ છે. ઇન્ટરનેટ કેવી રીતે વાપરવું તે પણ શીખો. ધીમે ધીમે આગળ વધો."
+            },
+            {
+                "question": "મોબાઈલમાં વાઈરસ આવ્યો, શું કરું?",
+                "keywords": ["વાઈરસ", "મોબાઈલ", "ફોન", "વાઇરસ"],
+                "answer": "મોબાઈલમાં વાઈરસ આવે તો એન્ટી-વાઈરસ એપ ઇન્સ્ટોલ કરો. અજાણી લિંક્સ પર ક્લિક ન કરો, ગૂગલ પ્લે સ્ટોર બહારથી એપ ન ઉતારો. જો સમસ્યા વધે તો ફોન રીસ્ટોર કરો અથવા સર્વિસ સેન્ટર બતાવો."
+            },
+            
+            # ઘર-પરિવાર
+            {
+                "question": "બાળકને અભ્યાસમાં મન કેમ નથી લાગતું?",
+                "keywords": ["બાળક", "અભ્યાસ", "ભણવું", "બચ્ચા"],
+                "answer": "બાળકને અભ્યાસમાં રસ ન પડે તો તેના પર દબાણ ન કરો. રમત-રમતમાં ભણાવો, તેની રુચિ સમજો, ટૂંકા ગાળાના લક્ષ્યો નક્કી કરો. તેની સફળતા પર વખાણ કરો. ટીવી-મોબાઈલનો સમય મર્યાદિત કરો."
+            },
+            {
+                "question": "સાસુ-વહુના ઝઘડા કેવી રીતે ટાળવા?",
+                "keywords": ["સાસુ", "વહુ", "ઝઘડા", "ફેમિલી"],
+                "answer": "સાસુ-વહુ વચ્ચે સંબંધ સુધારવા બંને વચ્ચે સંવાદ જરૂરી છે. એકબીજાની લાગણીઓ સમજો, નાની વાતોને અવગણો. પતિએ બંને વચ્ચે સમતોલ રહેવું જોઈએ. કુટુંબમાં એકતા અને આદર જાળવો."
+            },
+            
+            # પ્રવાસ
+            {
+                "question": "ગુજરાતમાં ફરવા ક્યાં જવું?",
+                "keywords": ["ફરવા", "ટૂર", "ટ્રિપ", "પ્રવાસ"],
+                "answer": "ગુજરાતમાં ઘણા સુંદર સ્થળો છે - સોમનાથ, દ્વારકા, સાપુતારા, સ્ટેચ્યુ ઓફ યુનિટી, કચ્છનું રણ, ગીરનું જંગલ. ઉનાળામાં ઠંડી જગ્યાએ અને શિયાળામાં દરિયાકાંઠે જવાનો આનંદ અલગ જ છે."
+            },
+            {
+                "question": "ટ્રેનમાં રિઝર્વેશન કેવી રીતે કરાવવું?",
+                "keywords": ["ટ્રેન", "રિઝર્વેશન", "ટિકિટ", "રેલવે"],
+                "answer": "ટ્રેન ટિકિટ બુક કરવા IRCTC વેબસાઇટ અથવા એપ વાપરો. તમારી યાત્રાની તારીખના ૧૨૦ દિવસ પહેલા બુકિંગ ખૂલે છે. UPI, કાર્ડ અથવા નેટબેંકિંગથી પેમેન્ટ કરી શકો છો. અનકન્ફર્મ ટિકિટ માટે RAC/વેઈટિંગનો વિકલ્પ છે."
             }
-        }
-    </script>
-</body>
-</html>
-"""
+        ]
+        
+        # Expand knowledge base with more entries
+        self._expand_knowledge_base()
+        
+    def _expand_knowledge_base(self):
+        """ઓટોમેટિક રીતે વધુ QA જોડીઓ જનરેટ કરો"""
+        templates = [
+            # સામાન્ય પ્રશ્નો
+            ("હું ઉદાસ છું", ["ઉદાસ", "દુઃખી", "સેડ"], "ઉદાસી એ જીવનનો એક ભાગ છે. તમારા મિત્રો કે પરિવાર સાથે વાત કરો, તમારા શોખ પૂરા કરો, સંગીત સાંભળો. યાદ રાખો, દરેક વાદળી પછી સૂરજ આવે છે. હું તમારી સાથે છું."),
+            
+            ("હું ખુશ છું", ["ખુશ", "આનંદ", "હેપી"], "તમારી ખુશી સાંભળીને મને ઘણો આનંદ થયો! ખુશી વહેંચવાથી વધે છે. તમારી ખુશીના કારણો શું છે? હું તમારી સાથે ઉજવણી કરવા માંગુ છું."),
+            
+            ("સમય પસાર થાય છે", ["સમય", "ટાઇમ", "ઘડિયાળ"], "સમય ખરેખર ઝડપથી પસાર થાય છે. એટલે જ કહેવાય છે 'સમય કરતાં મોટો કોઈ ગુરુ નથી'. આપણે દરેક ક્ષણનો સદુપયોગ કરવો જોઈએ. તમે આ સમયનો સદુપયોગ કેવી રીતે કરવા માંગો છો?")
+        ]
+        
+        for question, keywords, answer in templates:
+            self.qa_corpus.append({
+                "question": question,
+                "keywords": keywords,
+                "answer": answer
+            })
+    
+    def preprocess(self, text):
+        """ટેક્સ્ટ પ્રીપ્રોસેસિંગ"""
+        text = text.lower().strip()
+        # Remove extra spaces
+        text = ' '.join(text.split())
+        return text
+    
+    def calculate_similarity(self, user_input, keywords):
+        """કીવર્ડ આધારિત સમાનતા ગણો"""
+        user_input = self.preprocess(user_input)
+        user_words = set(user_input.split())
+        
+        # Direct keyword matching
+        keyword_matches = 0
+        for keyword in keywords:
+            if keyword in user_input:
+                keyword_matches += 1
+        
+        # Word overlap
+        overlap = len(user_words.intersection(set(keywords)))
+        
+        # Combined score
+        score = keyword_matches * 2 + overlap
+        
+        return score
+    
+    def get_contextual_response(self, user_input):
+        """કોન્ટેક્સ્ટ આધારિત નેચરલ રિસ્પોન્સ જનરેટ કરો"""
+        user_input = self.preprocess(user_input)
+        
+        # સૌથી મેળ ખાતો QA શોધો
+        best_match = None
+        best_score = 0
+        
+        for qa in self.qa_corpus:
+            # Question similarity
+            q_score = self.calculate_similarity(user_input, [qa['question']] + qa['keywords'])
+            
+            # Keyword matching
+            kw_score = self.calculate_similarity(user_input, qa['keywords'])
+            
+            total_score = q_score + kw_score * 1.5
+            
+            if total_score > best_score:
+                best_score = total_score
+                best_match = qa
+        
+        # જો સારો મેચ ન મળે
+        if best_score < 2:
+            return self._generate_dynamic_response(user_input)
+        
+        return best_match['answer']
+    
+    def _generate_dynamic_response(self, user_input):
+        """જ્યારે મેચ ન મળે ત્યારે ડાયનેમિક રિસ્પોન્સ બનાવો"""
+        user_input = self.preprocess(user_input)
+        
+        # પ્રશ્નના પ્રકાર પ્રમાણે જવાબ
+        if 'શું' in user_input or 'કયા' in user_input or 'કેવી' in user_input:
+            return f"તમે '{user_input}' વિશે પૂછ્યું. હું આ વિષય પર વધુ માહિતી ભેગી કરી રહી છું. શું તમે થોડું વધારે વિસ્તારથી સમજાવી શકો? મને તમારી મદદ કરવાનો આનંદ થશે."
+        
+        elif 'કેમ' in user_input or 'શા માટે' in user_input:
+            return f"સારો પ્રશ્ન! '{user_input}' - આ પ્રશ્નનો જવાબ શોધવો રસપ્રદ છે. તમારા અનુભવ મુજબ તમે શું માનો છો? હું તમારો અભિપ્રાય જાણવા માંગુ છું."
+        
+        elif 'ક્યાં' in user_input or 'કઈ જગ્યાએ' in user_input:
+            return f"સ્થળ વિશે પૂછ્યું. હું તમને '{user_input}' માટે યોગ્ય સ્થળ શોધવામાં મદદ કરી શકું. શું તમે કોઈ ચોક્કસ વિસ્તાર અથવા પ્રકારની જગ્યા શોધી રહ્યા છો?"
+        
+        elif 'કેવી રીતે' in user_input or 'પદ્ધતિ' in user_input:
+            return f"રીત-પદ્ધતિ વિશે પૂછ્યું. '{user_input}' માટે કેટલીક રીતો હોઈ શકે. ચાલો સાથે મળીને વિચારીએ. તમે અત્યાર સુધી શું પ્રયત્ન કર્યો છે?"
+        
+        elif 'કેટલા' in user_input or 'કેટલી' in user_input or 'કિંમત' in user_input:
+            return f"માત્રા અથવા કિંમત વિશે પૂછ્યું. હું આ માહિતી ચોક્કસ શોધી આપીશ. શું તમે કોઈ ચોક્કસ વિકલ્પ ધ્યાનમાં રાખ્યો છે?"
+        
+        # વ્યક્તિગત ટચ સાથે ડિફોલ્ટ રિસ્પોન્સ
+        greetings = [
+            f"તમે જે કહ્યું તે મેં સાંભળ્યું: '{user_input}'. આ વિષય પર આપણે વાત કરી શકીએ. તમારો દૃષ્ટિકોણ શું છે?",
+            f"રસપ્રદ વાત કરી. '{user_input}' - આ વિશે તમને બીજું શું જાણવું છે?",
+            f"હું સાંભળી રહી છું. તમે '{user_input}' કહ્યું. શું તમે થોડું વધારે સમજાવી શકો?",
+            f"તમારી વાત મને સ્પર્શી ગઈ. આપણે '{user_input}' પર ચર્ચા કરી શકીએ. તમે આ વિશે કેવું અનુભવો છો?",
+            f"સરસ! '{user_input}' - હું તમને મદદ કરવા માટે ઉત્સુક છું. તમને બરાબર શું જોઈએ છે?"
+        ]
+        
+        return random.choice(greetings)
 
-@app.route('/')
-def home():
-    return render_template_string(HTML_PAGE)
+# Initialize the bot
+bot = NaturalGujaratiBot()
 
 @app.route('/get_response', methods=['POST'])
 def chat_api():
     data = request.json
     msg = data.get('message', '')
     
-    # API Key વગર નેચરલ રિપ્લાય માટે જુગાડ (Free API Endpoint)
+    if not msg:
+        return jsonify({'reply': "કૃપા કરીને કંઈક લખો. હું તમારી વાત સાંભળવા તૈયાર છું."})
+    
     try:
-        # આ એક પબ્લિક API છે જે નેચરલ જવાબ આપી શકે છે
-        api_url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=gu&dt=t&q={msg}"
-        # નોંધ: અહીં ખરેખર AI મોડેલ કનેક્ટ કરવા માટે 'requests' માં ફ્રી AI URL હોવું જોઈએ.
-        # અત્યારે ટેસ્ટિંગ માટે આપણે બેકએન્ડ લોજિક મજબૂત રાખીએ છીએ.
-        return jsonify({'reply': f"મેં સાંભળ્યું: '{msg}'. હું અત્યારે આના પર મનન કરી રહી છું."})
-    except:
-        return jsonify({'reply': "ક્ષમા કરજો, અત્યારે સર્વર વ્યસ્ત છે."})
+        # Natural response generate કરો
+        reply = bot.get_contextual_response(msg)
+        
+        # થોડી વેરાયટી માટે
+        if random.random() < 0.3:  # 30% વખત
+            reply = self._add_personal_touch(reply)
+        
+        return jsonify({'reply': reply})
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'reply': "હું અત્યારે થોડી વ્યસ્ત છું, પણ તમારી વાત સાંભળી. થોડીવાર પછી ફરી પૂછશો?"})
 
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+def _add_personal_touch(reply):
+    """જવાબમાં અંગત સ્પર્શ ઉમેરો"""
+    touches = [
+        " તમને આ જવાબ ગમ્યો?",
+        " તમારું શું માનવું છે?",
+        " આ વિશે તમારા વિચારો જાણવાનું ગમશે.",
+        " શું તમને આ માહિતી ઉપયોગી લાગી?",
+        " આ વિષય પર તમારો અનુભવ કેવો રહ્યો?"
+    ]
+    return reply + random.choice(touches)
+
+# Your HTML template and other routes remain the same
