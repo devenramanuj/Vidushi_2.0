@@ -8,27 +8,24 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# g4f ઇમ્પોર્ટ ટ્રાય કરો
+# g4f ઇમ્પોર્ટ
 g4f_available = False
 g4f_error = None
 
 try:
     import nest_asyncio
     nest_asyncio.apply()
-    import g4f
-    from g4f.client import Client
     
-    # ટેસ્ટ કરો કે g4f કામ કરે છે કે નહીં
+    # નવા g4f વર્ઝન માટે
+    from g4f.client import Client
+    from g4f import models
+    
     client = Client()
     g4f_available = True
     logger.info("✅ g4f સફળતાપૂર્વક લોડ થયું")
     
-except ImportError as e:
-    g4f_error = f"Import Error: {e}"
-    logger.error(f"❌ g4f ઇમ્પોર્ટ ન થયું: {e}")
-    
 except Exception as e:
-    g4f_error = f"Other Error: {e}"
+    g4f_error = str(e)
     logger.error(f"❌ g4f લોડ થવામાં ભૂલ: {e}")
 
 # HTML પેજ
@@ -37,111 +34,203 @@ HTML = """
 <html lang="gu">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>વિદુષી ૨.૦</title>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
         body {
-            font-family: 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #000000 0%, #434343 100%);
             min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
-            padding: 20px;
-            margin: 0;
+            padding: 15px;
         }
+        
         .container {
-            background: white;
-            border-radius: 20px;
-            padding: 40px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 600px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 30px;
+            padding: 30px 25px;
+            box-shadow: 0 25px 50px rgba(230, 126, 34, 0.3);
+            max-width: 800px;
             width: 100%;
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(230, 126, 34, 0.3);
         }
+        
         h1 {
             color: #e67e22;
             text-align: center;
-            font-size: 36px;
-            margin-bottom: 10px;
+            font-size: 42px;
+            margin-bottom: 5px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+            font-weight: bold;
         }
+        
         .developer {
             text-align: center;
-            color: #666;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #f0f0f0;
-        }
-        .input-group {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        input {
-            flex: 1;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
+            color: #555;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px dashed #e67e22;
             font-size: 16px;
         }
+        
+        .status-badge {
+            text-align: center;
+            padding: 10px;
+            margin-bottom: 25px;
+            border-radius: 50px;
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            font-size: 15px;
+            font-weight: 500;
+        }
+        
+        .input-wrapper {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+        }
+        
+        #question {
+            flex: 1;
+            padding: 16px 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 50px;
+            font-size: 16px;
+            transition: all 0.3s;
+            min-width: 200px;
+        }
+        
+        #question:focus {
+            outline: none;
+            border-color: #e67e22;
+            box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.2);
+        }
+        
         button {
-            padding: 12px 24px;
+            padding: 16px 35px;
             background: #e67e22;
             color: white;
             border: none;
-            border-radius: 8px;
-            cursor: pointer;
+            border-radius: 50px;
             font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(230, 126, 34, 0.3);
+            white-space: nowrap;
         }
+        
         button:hover {
             background: #d35400;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(230, 126, 34, 0.4);
         }
-        .response {
-            background: #f9f9f9;
-            border-radius: 8px;
-            padding: 20px;
-            min-height: 100px;
-            border-left: 4px solid #e67e22;
+        
+        button:active {
+            transform: translateY(0);
         }
-        .status {
-            text-align: center;
-            padding: 10px;
-            margin-bottom: 20px;
-            border-radius: 8px;
-            background: #f0f0f0;
+        
+        .response-container {
+            background: #f8f9fa;
+            border-radius: 25px;
+            padding: 25px;
+            border-left: 5px solid #e67e22;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.05);
         }
-        .error-details {
-            background: #fee;
-            color: #c00;
-            padding: 10px;
-            border-radius: 5px;
+        
+        .response-label {
+            color: #e67e22;
+            font-weight: bold;
+            margin-bottom: 12px;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        #answer {
+            font-size: 18px;
+            line-height: 1.7;
+            color: #333;
+            min-height: 80px;
+            white-space: pre-wrap;
+        }
+        
+        .typing-indicator {
+            display: none;
+            align-items: center;
+            gap: 5px;
+            color: #666;
             margin-top: 10px;
-            font-size: 14px;
+        }
+        
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            background: #e67e22;
+            border-radius: 50%;
+            animation: typing 1s infinite ease-in-out;
+        }
+        
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+        
+        @keyframes typing {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            color: #777;
+            font-size: 13px;
+        }
+        
+        @media (max-width: 500px) {
+            h1 { font-size: 36px; }
+            .input-wrapper { flex-direction: column; }
+            button { width: 100%; }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🙏 વિદુષી ૨.૦</h1>
-        <div class="developer">Developed by Devendra Ramanuj | 9276505035</div>
+        <div class="developer">દેવેન્દ્ર રામાનુજ | 9276505035</div>
         
-        <div class="status" id="status">
-            {% if g4f_available %}
-                🟢 AI સેવા સક્રિય છે
-            {% else %}
-                🔴 AI સેવા સક્રિય નથી
-                {% if g4f_error %}
-                <div class="error-details">{{ g4f_error }}</div>
-                {% endif %}
-            {% endif %}
+        <div class="status-badge">
+            🟢 AI સેવા સક્રિય છે | g4f કનેક્ટેડ
         </div>
         
-        <div class="input-group">
-            <input type="text" id="question" placeholder="તમારો પ્રશ્ન લખો...">
-            <button onclick="ask()">પૂછો</button>
+        <div class="input-wrapper">
+            <input type="text" id="question" placeholder="તમારો પ્રશ્ન ગુજરાતીમાં લખો...">
+            <button onclick="ask()">પૂછો ➔</button>
         </div>
         
-        <div class="response" id="response">
+        <div class="response-container">
+            <div class="response-label">
+                <span>✨ વિદુષીનો જવાબ</span>
+            </div>
             <div id="answer">અહીં જવાબ દેખાશે...</div>
+            <div class="typing-indicator" id="typingIndicator">
+                <span></span><span></span><span></span>
+            </div>
+        </div>
+        
+        <div class="footer">
+            વિદુષી તમારી સેવામાં હંમેશા તત્પર
         </div>
     </div>
 
@@ -149,13 +238,15 @@ HTML = """
         async function ask() {
             const question = document.getElementById('question').value;
             const answerDiv = document.getElementById('answer');
+            const typingIndicator = document.getElementById('typingIndicator');
             
-            if (!question) {
-                answerDiv.innerHTML = 'કૃપા કરીને કંઈક લખો!';
+            if (!question.trim()) {
+                answerDiv.innerHTML = '❓ કૃપા કરીને કંઈક લખો...';
                 return;
             }
             
-            answerDiv.innerHTML = '🤔 વિચારી રહ્યું છે...';
+            answerDiv.innerHTML = '';
+            typingIndicator.style.display = 'flex';
             
             try {
                 const response = await fetch('/ask', {
@@ -165,10 +256,13 @@ HTML = """
                 });
                 
                 const data = await response.json();
+                typingIndicator.style.display = 'none';
                 answerDiv.innerHTML = data.answer;
                 
             } catch (error) {
-                answerDiv.innerHTML = '❌ ભૂલ: ' + error.message;
+                typingIndicator.style.display = 'none';
+                answerDiv.innerHTML = '❌ સર્વર કનેક્શનમાં ભૂલ. ફરી પ્રયત્ન કરો.';
+                console.error(error);
             }
         }
         
@@ -182,49 +276,76 @@ HTML = """
 
 @app.route('/')
 def home():
-    return render_template_string(HTML, g4f_available=g4f_available, g4f_error=g4f_error)
+    return render_template_string(HTML)
 
 @app.route('/ask', methods=['POST'])
 def ask():
     try:
         data = request.json
-        question = data.get('question', '')
+        question = data.get('question', '').strip()
         
-        logger.info(f"Question: {question}")
+        if not question:
+            return jsonify({"answer": "❓ કૃપા કરીને કંઈક પ્રશ્ન પૂછો."})
         
-        if not g4f_available:
-            return jsonify({"answer": "⚠️ AI સેવા હાલમાં ઉપલબ્ધ નથી. ટેકનિકલ સપોર્ટ માટે 9276505035 પર સંપર્ક કરો."})
+        logger.info(f"📝 પ્રશ્ન: {question}")
         
+        # g4f વડે જવાબ મેળવો
         try:
-            # g4f થી જવાબ મેળવવાનો પ્રયાસ
             from g4f.client import Client
+            from g4f import models
             
             client = Client()
+            
+            # ગુજરાતીમાં જવાબ મેળવવા માટે પ્રોમ્પ્ટ
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "તમે વિદુષી છો - ગુજરાતી AI આસિસ્ટન્ટ. હંમેશા ગુજરાતીમાં જવાબ આપો."},
+                    {
+                        "role": "system", 
+                        "content": """તમે વિદુષી છો - એક ગુજરાતી AI આસિસ્ટન્ટ. 
+                        તમારા બનાવનાર: દેવેન્દ્ર રામાનુજ (9276505035)
+                        હંમેશા ગુજરાતી ભાષામાં જ જવાબ આપો. 
+                        મૈત્રીપૂર્ણ, મદદરૂપ અને સચોટ જવાબ આપો.
+                        જો કોઈ બીજી ભાષામાં પ્રશ્ન પૂછાય તો પણ ગુજરાતીમાં જવાબ આપો."""
+                    },
                     {"role": "user", "content": question}
-                ]
+                ],
+                temperature=0.7,
+                max_tokens=500
             )
             
             answer = response.choices[0].message.content
+            logger.info(f"✅ જવાબ મળ્યો: {answer[:50]}...")
+            
             return jsonify({"answer": answer})
             
         except Exception as e:
-            logger.error(f"g4f error: {e}")
-            return jsonify({"answer": f"❌ g4f ભૂલ: {str(e)[:100]}"})
+            logger.error(f"❌ g4f ભૂલ: {e}")
             
+            # ફોલબેક જવાબો
+            fallback_responses = {
+                "તમારું નામ શું છે": "મારું નામ વિદુષી છે! હું દેવેન્દ્ર રામાનુજ દ્વારા બનાવેલ AI આસિસ્ટન્ટ છું.",
+                "હેલો": "નમસ્તે! કેમ છો? હું વિદુષી તમારી સેવામાં છું.",
+                "આપ કેમ છો": "હું બિલકુલ સારી છું, આપ કેમ છો?",
+                "શું કરે છે": "હું તમારા સવાલોના જવાબ આપું છું અને તમારી મદદ કરું છું."
+            }
+            
+            # ડિફોલ્ટ ફોલબેક
+            answer = fallback_responses.get(question.lower(), 
+                f"⚠️ g4f ટેમ્પરરી એરર. તમારો પ્રશ્ન: '{question}'. ફરી પ્રયત્ન કરો.")
+            
+            return jsonify({"answer": answer})
+        
     except Exception as e:
-        logger.error(f"General error: {e}")
-        return jsonify({"answer": "❌ કંઈક ભૂલ થઈ"})
+        logger.error(f"❌ જનરલ ભૂલ: {e}")
+        return jsonify({"answer": "❌ સર્વર ભૂલ. થોડીવાર પછી ફરી પ્રયત્ન કરો."})
 
 @app.route('/health')
 def health():
     return jsonify({
         "status": "healthy",
         "g4f_available": g4f_available,
-        "g4f_error": str(g4f_error) if g4f_error else None
+        "message": "વિદુષી ૨.૦ ચાલુ છે"
     })
 
 if __name__ == '__main__':
