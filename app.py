@@ -6,8 +6,8 @@ from flask import Flask, request, jsonify, render_template_string, send_from_dir
 nest_asyncio.apply()
 app = Flask(__name__)
 
-@app.route('/videos/<path:filename>')
-def serve_video(filename):
+@app.route('/Videos/<path:filename>')
+def serve_Video(filename):
     return send_from_directory(os.getcwd(), filename)
 
 HTML_PAGE = """
