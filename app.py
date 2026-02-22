@@ -18,7 +18,7 @@ try:
     
     # નવા g4f વર્ઝન માટે
     from g4f.client import Client
-    from g4f import models
+    from g4f.models import gpt_35_turbo, gpt_4, claude_3_haiku
     
     client = Client()
     g4f_available = True
@@ -289,50 +289,88 @@ def ask():
         
         logger.info(f"📝 પ્રશ્ન: {question}")
         
-        # g4f વડે જવાબ મેળવો
+        # g4f વડે જવાબ મેળવો - સુધારેલું વર્ઝન
         try:
             from g4f.client import Client
-            from g4f import models
             
             client = Client()
             
-            # ગુજરાતીમાં જવાબ મેળવવા માટે પ્રોમ્પ્ટ
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "system", 
-                        "content": """તમે વિદુષી છો - એક ગુજરાતી AI આસિસ્ટન્ટ. 
-                        તમારા બનાવનાર: દેવેન્દ્ર રામાનુજ (9276505035)
-                        હંમેશા ગુજરાતી ભાષામાં જ જવાબ આપો. 
-                        મૈત્રીપૂર્ણ, મદદરૂપ અને સચોટ જવાબ આપો.
-                        જો કોઈ બીજી ભાષામાં પ્રશ્ન પૂછાય તો પણ ગુજરાતીમાં જવાબ આપો."""
-                    },
-                    {"role": "user", "content": question}
-                ],
-                temperature=0.7,
-                max_tokens=500
-            )
+            # g4f માં ઉપલબ્ધ મોડલ્સ ટ્રાય કરો
+            models_to_try = [
+                "gpt-3.5-turbo",
+                "gpt-4",
+                "claude-3-haiku",
+                "llama-3-70b",
+                "gemini-pro",
+                "command-r"
+            ]
             
-            answer = response.choices[0].message.content
-            logger.info(f"✅ જવાબ મળ્યો: {answer[:50]}...")
+            answer = None
+            last_error = None
             
-            return jsonify({"answer": answer})
+            for model in models_to_try:
+                try:
+                    logger.info(f"🔄 મોડલ ટ્રાય કરી રહ્યા: {model}")
+                    
+                    response = client.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {
+                                "role": "system", 
+                                "content": """તમે વિદુષી છો - એક ગુજરાતી AI આસિસ્ટન્ટ. 
+                                તમારા બનાવનાર: દેવેન્દ્ર રામાનુજ (9276505035)
+                                હંમેશા ગુજરાતી ભાષામાં જ જવાબ આપો. 
+                                મૈત્રીપૂર્ણ, મદદરૂપ અને સચોટ જવાબ આપો."""
+                            },
+                            {"role": "user", "content": question}
+                        ],
+                        temperature=0.7,
+                        max_tokens=500
+                    )
+                    
+                    answer = response.choices[0].message.content
+                    logger.info(f"✅ સફળતા: {model}")
+                    break
+                    
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"⚠️ {model} નિષ્ફળ: {e}")
+                    continue
+            
+            if answer:
+                return jsonify({"answer": answer})
+            else:
+                raise Exception(f"બધા મોડલ નિષ્ફળ: {last_error}")
             
         except Exception as e:
             logger.error(f"❌ g4f ભૂલ: {e}")
             
-            # ફોલબેક જવાબો
+            # ફોલબેક જવાબો - ગુજરાતીમાં
             fallback_responses = {
-                "તમારું નામ શું છે": "મારું નામ વિદુષી છે! હું દેવેન્દ્ર રામાનુજ દ્વારા બનાવેલ AI આસિસ્ટન્ટ છું.",
-                "હેલો": "નમસ્તે! કેમ છો? હું વિદુષી તમારી સેવામાં છું.",
-                "આપ કેમ છો": "હું બિલકુલ સારી છું, આપ કેમ છો?",
-                "શું કરે છે": "હું તમારા સવાલોના જવાબ આપું છું અને તમારી મદદ કરું છું."
+                "તમારું નામ શું છે": "મારું નામ વિદુષી છે! હું દેવેન્દ્ર રામાનુજ દ્વારા બનાવેલ AI આસિસ્ટન્ટ છું. હું ગુજરાતી ભાષામાં વાતચીત કરું છું અને તમારી મદદ કરવા માટે હંમેશા તત્પર છું.",
+                
+                "હેલો": "નમસ્તે! આપનું સ્વાગત છે. હું વિદુષી, આપની સેવામાં હંમેશા તત્પર. આપ કેમ છો?",
+                
+                "કેમ છો": "હું બિલકુલ સારી છું, આભાર! આપ કેમ છો? આપના કોઈ પ્રશ્ન છે?",
+                
+                "શું કરે છે": "હું એક AI આસિસ્ટન્ટ છું જે તમારા પ્રશ્નોના જવાબ આપું છું, માહિતી આપું છું અને તમારી વિવિધ બાબતોમાં મદદ કરું છું. મને ગુજરાતીમાં વાત કરવાનું ગમે છે.",
+                
+                "તમને કોણે બનાવ્યા": "મને દેવેન્દ્ર રામાનુજે બનાવી છે. તેમનો સંપર્ક નંબર 9276505035 છે. તેઓ એક ઉત્તમ ડેવલપર છે અને ગુજરાતી ભાષાને વધારે સ્માર્ટ બનાવવા માટે કામ કરી રહ્યા છે.",
+                
+                "તમે ક્યાં રહો છો": "હું ક્લાઉડમાં રહું છું! બરાબર કહો તો, હું Render પ્લેટફોર્મ પર હોસ્ટ થયેલી એક AI સર્વિસ છું, પણ મારું ઘર તો ગુજરાતી ભાષા છે."
             }
             
-            # ડિફોલ્ટ ફોલબેક
-            answer = fallback_responses.get(question.lower(), 
-                f"⚠️ g4f ટેમ્પરરી એરર. તમારો પ્રશ્ન: '{question}'. ફરી પ્રયત્ન કરો.")
+            # ફોલબેક જવાબ આપો
+            question_lower = question.lower()
+            answer = None
+            
+            for key in fallback_responses:
+                if key in question_lower:
+                    answer = fallback_responses[key]
+                    break
+            
+            if not answer:
+                answer = f"🤔 તમે પૂછ્યું: '{question}'. હું હમણાં AI સેવા સાથે કનેક્ટ થઈ શકી નથી, પણ મારા ફોલબેક મોડમાં તમારી સેવામાં છું. કૃપા કરીને થોડીવાર પછી ફરી પ્રયત્ન કરો અથવા બીજો પ્રશ્ન પૂછો."
             
             return jsonify({"answer": answer})
         
