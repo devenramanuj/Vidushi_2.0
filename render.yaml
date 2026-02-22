@@ -4,14 +4,8 @@ services:
     runtime: python
     region: oregon
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.18
-    staticPublishPath: videos  # વિડિઓ ફાઇલો માટે
-    
-buildCommand: |
-  apt-get update && apt-get install -y libjpeg-dev zlib1g-dev
-  pip install --upgrade pip
-  pip install -r requirements.txt
