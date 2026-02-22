@@ -1,10 +1,10 @@
+import g4f
 import os
-import requests
 from flask import Flask, request, jsonify, render_template_string, send_from_directory
 
 app = Flask(__name__)
 
-# વીડિયો ફોલ્ડરનો પાથ - GitHub પર 'Videos' (V કેપિટલ) છે એટલે અહીં પણ તે જ રાખ્યું છે
+# GitHub પર ફોલ્ડરનું નામ 'Videos' છે (V કેપિટલ)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 VIDEO_FOLDER = os.path.join(BASE_DIR, 'Videos')
 
@@ -25,7 +25,7 @@ HTML_PAGE = """
         #vidushi-video { width: 100%; height: 100%; object-fit: cover; }
         .footer-bar { position: absolute; bottom: 0; width: 100%; padding: 20px; z-index: 10; background: linear-gradient(transparent, rgba(0,0,0,0.9)); text-align: center; }
         #text-input { width: 70%; padding: 12px; border-radius: 20px; border: none; margin-bottom: 10px; color: #000; }
-        #send-btn { background: #e67e22; border: none; padding: 10px 20px; border-radius: 20px; color: white; font-weight: bold; cursor: pointer; }
+        #send-btn { background: #e67e22; border: none; padding: 10px 20px; border-radius: 20px; color: white; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -35,7 +35,7 @@ HTML_PAGE = """
         </video>
     </div>
     <div class="footer-bar">
-        <input type="text" id="text-input" placeholder="અહીં તમારો પ્રશ્ન લખો...">
+        <input type="text" id="text-input" placeholder="પ્રશ્ન પૂછો...">
         <button id="send-btn" onclick="askAI()">મોકલો</button>
     </div>
 
@@ -47,9 +47,7 @@ HTML_PAGE = """
         async function askAI() {
             const msg = document.getElementById('text-input').value;
             if(!msg) return;
-            
             vSource.src = "/Videos/thinking.mp4"; vPlayer.load(); vPlayer.play();
-            
             try {
                 const res = await fetch('/get_response', {
                     method: 'POST',
@@ -58,14 +56,15 @@ HTML_PAGE = """
                 });
                 const data = await res.json();
                 
-                // જવાબ આવતા જ વીડિયો બદલો
-                vSource.src = "/Videos/talking.mp4"; vPlayer.load(); vPlayer.play();
-                alert("વિદુષી: " + data.reply);
+                // જો સર્વર પરથી એરર આવે તો તે બતાવો
+                if(data.reply.includes("Error")) {
+                    alert("માફ કરજો, અત્યારે સર્વર વ્યસ્ત છે.");
+                } else {
+                    alert("વિદુષીનો જવાબ: " + data.reply); 
+                }
                 
-            } catch (e) { 
-                alert("સર્વર સાથે કનેક્ટ થઈ શકતું નથી.");
-                vSource.src = "/Videos/silent.mp4"; vPlayer.load(); vPlayer.play();
-            }
+                vSource.src = "/Videos/talking.mp4"; vPlayer.load(); vPlayer.play();
+            } catch (e) { alert("કનેક્શનમાં ભૂલ છે."); }
         }
     </script>
 </body>
@@ -79,20 +78,18 @@ def home(): return render_template_string(HTML_PAGE)
 def chat_api():
     try:
         data = request.json
-        user_msg = data.get('message', '')
+        msg = data.get('message', '')
         
-        # HuggingFace નું ફ્રી API વાપરીએ છીએ જે મજબૂત છે
-        API_URL = "https://api-inference.huggingface.co/models/facebook/blenderbot-400M-distill"
-        headers = {"Authorization": "Bearer hf_xxxx"} # અહીં ટોકન વગર પણ અમુક ટ્રાય ચાલે છે
-        
-        # સીધો જવાબ આપવા માટેનો જુગાડ
-        prompt = f"તમારું નામ વિદુષી છે. આ પ્રશ્નનો ગુજરાતીમાં જવાબ આપો: {user_msg}"
-        
-        # અત્યારે ટેસ્ટિંગ માટે એક સાદો જવાબ મોકલીએ જો AI ન ચાલે તો
-        return jsonify({'reply': f"મેં તમારો પ્રશ્ન '{user_msg}' સાંભળ્યો. હું તેના પર વિચાર કરી રહી છું."})
-
+        # પ્રોવાઈડર ફિક્સ કરી દઈએ જેથી API Key ન માંગે
+        response = g4f.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            provider=g4f.Provider.Blackbox, # Blackbox સામાન્ય રીતે કી વગર ચાલે છે
+            messages=[{"role": "user", "content": "જવાબ ગુજરાતીમાં આપો: " + msg}],
+        )
+        return jsonify({'reply': response})
     except Exception as e:
-        return jsonify({'reply': "ક્ષમા કરજો, અત્યારે સર્વર લોડ લઈ રહ્યું છે."})
+        # જો હજુ પણ એરર આવે તો સાદો જવાબ મોકલો જેથી એપ બંધ ન થાય
+        return jsonify({'reply': "હું હજી શીખી રહી છું, થોડી વાર પછી ફરી પૂછશો?"})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
